@@ -1003,8 +1003,8 @@ if __name__ == "__main__":
         input('Press Enter to continue ...')
 
     # save experiment data
-    with open('Results/Retransmissions.txt', 'w') as bfile:
-        bfile.write('id'.ljust(7) + 'Percentage'.ljust(14) + 'Retransmissions\n')
+    with open('Results/retransmissions.txt', 'w') as bfile:
+        bfile.write('id'.ljust(7) + 'Percentage'.ljust(11) + 'Retransmissions\n')
         for n in nodes:
             nodeid = '{nodeid}'.format(**vars(n))
             lstretans = n.lstretans
@@ -1012,9 +1012,10 @@ if __name__ == "__main__":
             if auxsent+lstretans == 0:
                 percentage = 0.0
             else:
-                percentage = float(lstretans/(auxsent+lstretans)*100)
+                percentage = format(float(lstretans/(auxsent+lstretans)*100), '.4f')
+
             totalsent = int(lstretans+auxsent)
-            bfile.write('{} {} {}/{}\n'.format(nodeid.ljust(6), str(percentage).ljust(13), lstretans, totalsent))
+            bfile.write('{} {} {}/{}\n'.format(nodeid.ljust(6), str(percentage).ljust(10), lstretans, totalsent))
 
     fname = "Results/results.dat"
     print (fname)
