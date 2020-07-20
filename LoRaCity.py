@@ -395,7 +395,6 @@ def valid_bs():
 # check if the node is valid
 #
 def valid_node():
-    global contadorbbb
     idnode = 0
     for i in range(0, nrNodes):
         x = Xn[int(i/ln)][int(i%ln)]+offsetXnode
@@ -442,8 +441,6 @@ class myBS():
 #
 class myNode():
     def __init__(self, nodeid, period, x, y):
-        global bslist
-
         self.nodeid = nodeid
         self.period = period
         self.lstretans = 0
