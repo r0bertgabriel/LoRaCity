@@ -32,17 +32,15 @@ import random
 import numpy as np
 import math
 import sys
-import re
 import matplotlib.pyplot as plt
 import os
-import operator
 import geopandas as gpd
 import geopy.distance
-from shapely.geometry import Point, Polygon
+from shapely.geometry import Point
 from shapely.ops import nearest_points
 from matplotlib.patches import Rectangle
 from PyQt5.QtWidgets import (QApplication, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGroupBox, QLabel, QLineEdit, QVBoxLayout)
-from PyQt5.QtCore import QDate, Qt
+from PyQt5.QtCore import Qt
 # turn on/off graphics
 graphics = 1
 
@@ -100,53 +98,42 @@ def per(sf,bw,cr,rssi,pl):
 # check for collisions at base station
 # Note: called before a packet (or rather node) is inserted into the list
 def checkcollision(packet):
-    col = 0 # flag needed since there might be several collisions for packet
+    col = 0
     if packet.lost:
         return 0
-    processing = 0
-    for i in range(0,len(packetsAtBS)):
-        if packetsAtBS[packet.processed] == 1:
-            processing = processing + 1
+    
+    processing = sum(1 for p in packetsAtBS[packet.bs].values() if p.processed == 1)
     if (processing > maxBSReceives):
-        print ("too long:", len(packetsAtBS))
+        print("too long:", len(packetsAtBS[packet.bs]))
         packet.processed = 0
     else:
         packet.processed = 1
 
+    # Verifica colisões com pacotes existentes
     if packetsAtBS[packet.bs]:
-        print ("CHECK node {} (sf:{} bw:{} freq:{:.6e}) others: {}".format(
-             packet.nodeid, packet.sf, packet.bw, packet.freq,
-             len(packetsAtBS)))
-        for other in packetsAtBS[packet.bs]:
-            if other.nodeid != packet.nodeid:
-               if(full_collision == 1 or full_collision == 2):
-                   if frequencyCollision(packet, other.packet[packet.bs]) \
-                   and timingCollision(packet, other.packet[packet.bs]):
-                       # check who collides in the power domain
-                       if (full_collision == 1):
-                          # Capture effect
-                          c = powerCollision_1(packet, other.packet[packet.bs])
-                       else:
-                          # Capture + Non-orthognalitiy SFs effects
-                          c = powerCollision_2(packet, other.packet[packet.bs])
-                       # mark all the collided packets
-                       # either this one, the other one, or both
-                       for p in c:
-                          p.collided = 1
-                          if p == packet:
-                             col = 1
-                   else:
-                       # no freq or timing collision, all fine
-                       pass
-               else:
-                   # simple collision
-                   if frequencyCollision(packet, other.packet[packet.bs]) \
-                   and sfCollision(packet, other.packet[packet.bs]):
-                       packet.collided = 1
-                       other.packet[packet.bs].collided = 1  # other also got lost, if it wasn't lost already
-                       col = 1
-        return col
-    return 0
+        for other_id, other in packetsAtBS[packet.bs].items():
+            if other_id != packet.nodeid:
+                if(full_collision == 1 or full_collision == 2):
+                    if frequencyCollision(packet, other.packet[packet.bs]) \
+                    and timingCollision(packet, other.packet[packet.bs]):
+                        # Verificar colisão no domínio de potência
+                        if (full_collision == 1):
+                            c = powerCollision_1(packet, other.packet[packet.bs])
+                        else:
+                            c = powerCollision_2(packet, other.packet[packet.bs])
+                        # Marcar pacotes colididos
+                        for p in c:
+                            p.collided = 1
+                            if p == packet:
+                                col = 1
+                else:
+                    # Colisão simples
+                    if frequencyCollision(packet, other.packet[packet.bs]) \
+                    and sfCollision(packet, other.packet[packet.bs]):
+                        packet.collided = 1
+                        other.packet[packet.bs].collided = 1
+                        col = 1
+    return col
 
 # check if the gateway can ack this packet at any of the receive windows
 # based on the duy cycle
@@ -378,7 +365,7 @@ def valid_bs():
         if out:
             b = myBS(idbs, x, y)
             bslist.append(b)
-            packetsAtBS.append([])
+            packetsAtBS.append({})
             packetsRecBS.append([])
             idbs = idbs + 1
         if valid and not out:
@@ -387,7 +374,7 @@ def valid_bs():
             y = aux_point.y
             b = myBS(idbs, x, y)
             bslist.append(b)
-            packetsAtBS.append([])
+            packetsAtBS.append({})
             packetsRecBS.append([])
             idbs = idbs + 1
 
@@ -587,7 +574,7 @@ def transmit(env,node):
         packetSeq = packetSeq + 1
 
         for bs in range(0, len(bslist)):
-           if (node in packetsAtBS[bs]):
+           if (node.nodeid in packetsAtBS[bs]):
                 print ("ERROR: packet already in")
            else:
                 sensitivity = sensi[node.packet[bs].sf - 7, [125,250,500].index(node.packet[bs].bw) + 1]
@@ -607,7 +594,7 @@ def transmit(env,node):
                         node.packet[bs].collided = 1
                     else:
                         node.packet[bs].collided = 0
-                    packetsAtBS[bs].append(node)
+                    packetsAtBS[bs][node.nodeid] = node
                     node.packet[bs].addTime = env.now
                     node.packet[bs].seqNr = packetSeq
 
@@ -683,8 +670,8 @@ def transmit(env,node):
         # complete packet has been received by base station
         # can remove it
         for bs in range(0, len(bslist)):
-            if (node in packetsAtBS[bs]):
-                packetsAtBS[bs].remove(node)
+            if (node.nodeid in packetsAtBS[bs]):
+                del packetsAtBS[bs][node.nodeid]
                 # reset the packet
                 node.packet[bs].collided = 0
                 node.packet[bs].processed = 0
@@ -792,7 +779,7 @@ if __name__ == "__main__":
 
     # global stuff
     nodes = []
-    packetsAtBS = []
+    packetsAtBS = [{} for _ in range(nrBS)]
     SFdistribution = [0 for x in range(0,6)]
     BWdistribution = [0 for x in range(0,3)]
     CRdistribution = [0 for x in range(0,4)]
@@ -867,7 +854,7 @@ if __name__ == "__main__":
     bslist = []
 
     # list of packets at each base station, init with 0 packets
-    packetsAtBS = []
+    packetsAtBS = [{} for _ in range(nrBS)]
     packetsRecBS = []
 
     # optimize nodes and base stations
