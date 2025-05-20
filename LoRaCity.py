@@ -41,6 +41,8 @@ from shapely.ops import nearest_points
 from matplotlib.patches import Rectangle
 from PyQt5.QtWidgets import (QApplication, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGroupBox, QLabel, QLineEdit, QVBoxLayout)
 from PyQt5.QtCore import Qt
+from functools import lru_cache
+
 # turn on/off graphics
 graphics = 1
 
@@ -281,10 +283,12 @@ def timingCollision(p1, p2):
 # this function computes the airtime of a packet
 # according to LoraDesignGuide_STD.pdf
 #
-def airtime(sf,cr,pl,bw):
+@lru_cache(maxsize=128)
+def airtime(sf, cr, pl, bw):
+    """Calculates airtime with caching for repeated calculations"""
     H = 0        # implicit header disabled (H=0) or not (H=1)
     DE = 0       # low data rate optimization enabled (=1) or not (=0)
-    Npream = 8   # number of preamble symbol (12.25  from Utz paper)
+    Npream = 8   # number of preamble symbol (12.25 from Utz paper)
 
     if bw == 125 and sf in [11, 12]:
         # low data rate optimization mandated for BW125 with SF11 and SF12
@@ -295,10 +299,10 @@ def airtime(sf,cr,pl,bw):
 
     Tsym = (2.0**sf)/bw  # msec
     Tpream = (Npream + 4.25)*Tsym
-    print ("sf", sf, " cr", cr, "pl", pl, "bw", bw)
     payloadSymbNB = 8 + max(math.ceil((8.0*pl-4.0*sf+28+16-20*H)/(4.0*(sf-2*DE)))*(cr+4),0)
     Tpayload = payloadSymbNB * Tsym
     return ((Tpream + Tpayload)/1000.0)  # to secs
+
 #
 # check for nodes in the BS
 #
